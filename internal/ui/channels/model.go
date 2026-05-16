@@ -96,25 +96,23 @@ func (m Model) loadChannels() tea.Msg {
 }
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
-	if m.view == viewAdd || m.view == viewEdit {
-		if m.form != nil {
-			switch msg.(type) {
-			case formResultMsg:
-			default:
-				formModel, cmd := m.form.Update(msg)
-				if fm, ok := formModel.(*huh.Form); ok {
-					m.form = fm
-				}
-				if m.form.State == huh.StateCompleted {
-					return m, m.submitForm()
-				}
-				if m.form.State == huh.StateAborted {
-					m.view = viewList
-					m.form = nil
-					return m, nil
-				}
-				return m, cmd
+	if (m.view == viewAdd || m.view == viewEdit) && m.form != nil {
+		switch msg.(type) {
+		case formResultMsg, channelsLoadedMsg, channelActionMsg:
+		default:
+			formModel, cmd := m.form.Update(msg)
+			if fm, ok := formModel.(*huh.Form); ok {
+				m.form = fm
 			}
+			if m.form.State == huh.StateCompleted {
+				return m, m.submitForm()
+			}
+			if m.form.State == huh.StateAborted {
+				m.view = viewList
+				m.form = nil
+				return m, nil
+			}
+			return m, cmd
 		}
 	}
 
@@ -122,6 +120,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		if m.form != nil {
+			m.form = m.form.WithWidth(msg.Width - 4).WithHeight(msg.Height - 4)
+		}
 
 	case channelsLoadedMsg:
 		if msg.err == nil {
@@ -150,9 +151,6 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.form = nil
 		return m, m.loadChannels
 
-	case formInitMsg:
-		return m, m.form.Init()
-
 	case tea.KeyMsg:
 		if m.filtering {
 			return m.handleFilterInput(msg)
@@ -161,8 +159,6 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	}
 	return m, nil
 }
-
-type formInitMsg struct{}
 
 func (m Model) handleFilterInput(msg tea.KeyMsg) (Model, tea.Cmd) {
 	switch msg.String() {
@@ -219,8 +215,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 	case "a":
 		m.view = viewAdd
 		m.statusMsg = ""
-		m.initAddForm()
-		return m, func() tea.Msg { return formInitMsg{} }
+		return m, m.initAddForm()
 	case "/":
 		m.filtering = true
 		m.filter.Focus()
@@ -235,8 +230,7 @@ func (m Model) handleDetailKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		m.statusMsg = ""
 	case "e":
 		m.view = viewEdit
-		m.initEditForm()
-		return m, func() tea.Msg { return formInitMsg{} }
+		return m, m.initEditForm()
 	case "d":
 		if m.selectedID != "" {
 			return m, m.deleteChannel()
@@ -292,7 +286,7 @@ func (m Model) handleAPIKeysKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m *Model) initAddForm() {
+func (m *Model) initAddForm() tea.Cmd {
 	m.formFields = formFields{
 		serviceType: "openai",
 		priority:    1,
@@ -312,13 +306,22 @@ func (m *Model) initAddForm() {
 			huh.NewInput().Title("Description").Value(&m.formFields.description),
 		),
 	).WithTheme(huh.ThemeCharm())
-	m.form = f
+	w := m.width - 4
+	h := m.height - 4
+	if w < 40 {
+		w = 40
+	}
+	if h < 10 {
+		h = 10
+	}
+	m.form = f.WithWidth(w).WithHeight(h)
+	return m.form.Init()
 }
 
-func (m *Model) initEditForm() {
+func (m *Model) initEditForm() tea.Cmd {
 	ch := m.selectedChannel()
 	if ch == nil {
-		return
+		return nil
 	}
 	m.formFields = formFields{
 		name:        ch.Name,
@@ -336,7 +339,16 @@ func (m *Model) initEditForm() {
 			huh.NewInput().Title("Proxy URL").Value(&m.formFields.proxyURL),
 		),
 	).WithTheme(huh.ThemeCharm())
-	m.form = f
+	w := m.width - 4
+	h := m.height - 4
+	if w < 40 {
+		w = 40
+	}
+	if h < 10 {
+		h = 10
+	}
+	m.form = f.WithWidth(w).WithHeight(h)
+	return m.form.Init()
 }
 
 func (m Model) submitForm() tea.Cmd {
