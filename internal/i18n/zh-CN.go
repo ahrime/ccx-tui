@@ -61,4 +61,13 @@ var zhCN = map[string]string{
 	"more.settings": "设置",
 	"more.health":   "健康检查",
 	"more.upgrade":  "升级",
+	"more.metrics":  "指标",
+	"capability.start":  "开始能力测试",
+	"capability.status": "测试状态",
+	"capability.cancel": "取消测试",
+	"capability.retry":  "重试测试",
+	"logs.loading":    "加载日志...",
+	"logs.no_logs":    "暂无日志",
+	"metrics.title":   "指标",
+	"metrics.no_data": "暂无指标数据",
 }

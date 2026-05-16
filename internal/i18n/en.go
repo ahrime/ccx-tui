@@ -61,4 +61,13 @@ var enUS = map[string]string{
 	"more.settings": "Settings",
 	"more.health":   "Health",
 	"more.upgrade":  "Upgrade",
+	"more.metrics":  "Metrics",
+	"capability.start":  "Start Capability Test",
+	"capability.status": "Test Status",
+	"capability.cancel": "Cancel Test",
+	"capability.retry":  "Retry Test",
+	"logs.loading":    "Loading logs...",
+	"logs.no_logs":    "No logs yet",
+	"metrics.title":   "Metrics",
+	"metrics.no_data": "No metrics data",
 }
