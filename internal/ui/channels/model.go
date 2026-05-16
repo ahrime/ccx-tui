@@ -56,6 +56,7 @@ type Model struct {
 var serviceTypes = []string{"openai", "anthropic", "azure", "gemini", "cohere"}
 
 type channelsLoadedMsg struct {
+	chType   client.ChannelType
 	channels []client.UpstreamConfig
 	err      error
 }
@@ -89,10 +90,10 @@ func (m Model) Init() tea.Cmd {
 
 func (m Model) loadChannels() tea.Msg {
 	if m.client == nil {
-		return channelsLoadedMsg{err: fmt.Errorf("not connected")}
+		return channelsLoadedMsg{chType: m.chType, err: fmt.Errorf("not connected")}
 	}
 	chs, err := m.client.ListChannels(context.Background(), m.chType)
-	return channelsLoadedMsg{channels: chs, err: err}
+	return channelsLoadedMsg{chType: m.chType, channels: chs, err: err}
 }
 
 func newTextInput(placeholder string, hidden bool) textinput.Model {
@@ -181,6 +182,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.height = msg.Height
 
 	case channelsLoadedMsg:
+		if msg.chType != m.chType {
+			return m, nil
+		}
 		if msg.err == nil {
 			m.channels = msg.channels
 		} else {
