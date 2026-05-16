@@ -257,11 +257,11 @@ func (m Model) handleFormKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 			m.focusField(m.fieldIdx + 1)
 			return m, nil
 		}
-		if m.fieldIdx < len(m.fields)-1 {
-			m.focusField(m.fieldIdx + 1)
-			return m, nil
+		if m.fieldIdx == len(m.fields)-1 {
+			return m, m.submitForm()
 		}
-		return m, m.submitForm()
+		m.focusField(m.fieldIdx + 1)
+		return m, nil
 	}
 
 	if curField.isSelect {
@@ -729,7 +729,12 @@ func (m Model) viewForm() string {
 	content := strings.Join(rows, "\n")
 
 	helpStyle := lipgloss.NewStyle().Faint(true)
-	help := helpStyle.Render("  ↑↓: Navigate  Tab: Next  Enter: Confirm  Esc: Cancel")
+	var help string
+	if m.fieldIdx == len(m.fields)-1 {
+		help = helpStyle.Render("  ↑↓: Navigate  Tab: Next  Enter: Submit  Esc: Cancel")
+	} else {
+		help = helpStyle.Render("  ↑↓: Navigate  Tab: Next  Enter: Next  Esc: Cancel")
+	}
 
 	box := borderStyle.Render(lipgloss.NewStyle().Bold(true).Render("  "+title) + "\n\n" + content)
 
