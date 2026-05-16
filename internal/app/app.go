@@ -71,7 +71,7 @@ func NewApp() App {
 	h.ShowAll = false
 	ii := i18n.New(locale)
 
-	ov := overview.New(apiClient, mgr, ii)
+	ov := overview.New(apiClient, mgr, paths, ii)
 	var chs [4]channels.Model
 	for i := range chs {
 		chs[i] = channels.New(channelTypes[i], apiClient, ii)

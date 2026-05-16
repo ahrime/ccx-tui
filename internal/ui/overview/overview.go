@@ -1,7 +1,11 @@
 package overview
 
 import (
+	"context"
+	"fmt"
+
 	"github.com/BenedictKing/ccx-tui/internal/client"
+	"github.com/BenedictKing/ccx-tui/internal/config"
 	"github.com/BenedictKing/ccx-tui/internal/i18n"
 	"github.com/BenedictKing/ccx-tui/internal/process"
 	"github.com/charmbracelet/bubbles/key"
@@ -14,6 +18,7 @@ type Model struct {
 	height    int
 	client    *client.APIClient
 	process   *process.Manager
+	paths     config.Paths
 	i18n      *i18n.I18n
 	connected bool
 	version   string
@@ -21,21 +26,105 @@ type Model struct {
 	memory    string
 	port      string
 	loading   bool
+	statusMsg string
 }
 
-func New(c *client.APIClient, p *process.Manager, i *i18n.I18n) Model {
-	return Model{client: c, process: p, i18n: i}
+type healthResultMsg struct {
+	connected bool
+	version   string
 }
 
-func (m Model) Init() tea.Cmd { return nil }
+type processActionMsg struct {
+	action string
+	pid    int
+	err    error
+}
+
+func New(c *client.APIClient, p *process.Manager, paths config.Paths, i *i18n.I18n) Model {
+	return Model{client: c, process: p, paths: paths, i18n: i, loading: true}
+}
+
+func (m Model) Init() tea.Cmd {
+	return m.checkHealth
+}
+
+func (m Model) checkHealth() tea.Msg {
+	if m.client == nil {
+		return healthResultMsg{connected: false}
+	}
+	resp, err := m.client.HealthCheck(context.Background())
+	if err != nil {
+		return healthResultMsg{connected: false}
+	}
+	ver := ""
+	if v, ok := resp["version"]; ok {
+		if vm, ok := v.(map[string]interface{}); ok {
+			if vs, ok := vm["version"]; ok {
+				ver = fmt.Sprintf("%v", vs)
+			}
+		}
+	}
+	return healthResultMsg{connected: true, version: ver}
+}
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+	case healthResultMsg:
+		m.connected = msg.connected
+		m.version = msg.version
+		m.loading = false
+		return m, nil
+	case processActionMsg:
+		if msg.err != nil {
+			m.statusMsg = fmt.Sprintf("%s failed: %v", msg.action, msg.err)
+		} else {
+			m.statusMsg = fmt.Sprintf("%s success (PID: %d)", msg.action, msg.pid)
+		}
+		return m, m.checkHealth
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "s":
+			return m, m.startProcess()
+		case "x":
+			return m, m.stopProcess()
+		case "r":
+			return m, m.restartProcess()
+		}
 	}
 	return m, nil
+}
+
+func (m Model) startProcess() tea.Cmd {
+	return func() tea.Msg {
+		if m.process == nil {
+			return processActionMsg{action: "start", err: fmt.Errorf("no process manager")}
+		}
+		pid, err := m.process.Start()
+		return processActionMsg{action: "start", pid: pid, err: err}
+	}
+}
+
+func (m Model) stopProcess() tea.Cmd {
+	return func() tea.Msg {
+		if m.process == nil {
+			return processActionMsg{action: "stop", err: fmt.Errorf("no process manager")}
+		}
+		err := m.process.Stop()
+		return processActionMsg{action: "stop", err: err}
+	}
+}
+
+func (m Model) restartProcess() tea.Cmd {
+	return func() tea.Msg {
+		if m.process == nil {
+			return processActionMsg{action: "restart", err: fmt.Errorf("no process manager")}
+		}
+		pid, err := m.process.Restart()
+		return processActionMsg{action: "restart", pid: pid, err: err}
+	}
 }
 
 func (m Model) View() string {
@@ -70,25 +159,44 @@ func (m Model) View() string {
 			valueStyle.Render(connText),
 	)
 
+	procStatus := "Stopped"
+	procIcon := "✗"
+	procColor := lipgloss.Color("9")
+	if running {
+		procStatus = "Running"
+		procIcon = "●"
+		procColor = lipgloss.Color("42")
+	}
+
 	procCard := cardStyle.Render(
 		labelStyle.Render("Process")+"\n"+
+			lipgloss.NewStyle().Foreground(procColor).Render(procIcon+" ")+
+			valueStyle.Render(procStatus),
+	)
+
+	binaryCard := cardStyle.Render(
+		labelStyle.Render("Binary")+"\n"+
 			valueStyle.Render(func() string {
-				if running {
-					return "Running"
+				if m.paths.BinaryExists() {
+					return "✓ Found"
 				}
-				return "Stopped"
+				return "✗ Not Found"
 			}()),
 	)
 
-	row := lipgloss.JoinHorizontal(lipgloss.Top, statusCard, "  ", procCard)
+	row1 := lipgloss.JoinHorizontal(lipgloss.Top, statusCard, "  ", procCard, "  ", binaryCard)
 
+	helpStyle := lipgloss.NewStyle().Faint(true)
 	if !running {
-		row += "\n\n  [s] Start CCX"
+		row1 += "\n\n" + helpStyle.Render("  [s] Start CCX")
 	} else {
-		row += "\n\n  [x] Stop  [r] Restart  [d] Doctor"
+		row1 += "\n\n" + helpStyle.Render("  [x] Stop  [r] Restart  [d] Doctor")
 	}
 
-	return row
+	if m.statusMsg != "" {
+		row1 += "\n  " + m.statusMsg
+	}
+	return row1
 }
 
 func (m Model) Bindings() []key.Binding { return nil }
