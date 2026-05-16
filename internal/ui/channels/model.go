@@ -219,13 +219,15 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 }
 
 func (m Model) handleFormKey(msg tea.KeyMsg) (Model, tea.Cmd) {
+	curField := m.fields[m.fieldIdx]
+
 	switch msg.String() {
 	case "esc":
 		m.view = viewList
 		m.fields = nil
 		return m, nil
-	case "up", "k":
-		if m.fields[m.fieldIdx].isSelect {
+	case "up":
+		if curField.isSelect {
 			f := &m.fields[m.fieldIdx]
 			if f.selIdx > 0 {
 				f.selIdx--
@@ -234,8 +236,8 @@ func (m Model) handleFormKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 			m.focusField(m.fieldIdx - 1)
 		}
 		return m, nil
-	case "down", "j":
-		if m.fields[m.fieldIdx].isSelect {
+	case "down":
+		if curField.isSelect {
 			f := &m.fields[m.fieldIdx]
 			if f.selIdx < len(f.options)-1 {
 				f.selIdx++
@@ -251,6 +253,10 @@ func (m Model) handleFormKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		m.focusField(m.fieldIdx - 1)
 		return m, nil
 	case "enter":
+		if curField.isSelect {
+			m.focusField(m.fieldIdx + 1)
+			return m, nil
+		}
 		if m.fieldIdx < len(m.fields)-1 {
 			m.focusField(m.fieldIdx + 1)
 			return m, nil
@@ -258,12 +264,17 @@ func (m Model) handleFormKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		return m, m.submitForm()
 	}
 
-	if !m.fields[m.fieldIdx].isSelect {
-		var cmd tea.Cmd
-		m.fields[m.fieldIdx].input, cmd = m.fields[m.fieldIdx].input.Update(msg)
-		return m, cmd
+	if curField.isSelect {
+		switch msg.String() {
+		case "j", "k":
+			return m, nil
+		}
+		return m, nil
 	}
-	return m, nil
+
+	var cmd tea.Cmd
+	m.fields[m.fieldIdx].input, cmd = m.fields[m.fieldIdx].input.Update(msg)
+	return m, cmd
 }
 
 func (m *Model) focusField(idx int) {
@@ -718,7 +729,7 @@ func (m Model) viewForm() string {
 	content := strings.Join(rows, "\n")
 
 	helpStyle := lipgloss.NewStyle().Faint(true)
-	help := helpStyle.Render("  ↑↓/Tab: Navigate  Enter: Confirm  Esc: Cancel")
+	help := helpStyle.Render("  ↑↓: Navigate  Tab: Next  Enter: Confirm  Esc: Cancel")
 
 	box := borderStyle.Render(lipgloss.NewStyle().Bold(true).Render("  "+title) + "\n\n" + content)
 
