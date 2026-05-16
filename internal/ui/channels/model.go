@@ -198,12 +198,13 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		return m, m.loadChannels
 
 	case formResultMsg:
-		if msg.err != nil {
-			m.statusMsg = fmt.Sprintf("form error: %v", msg.err)
-		} else {
-			m.statusMsg = "saved"
-		}
+		m.fields = nil
 		m.view = viewList
+		if msg.err != nil {
+			m.statusMsg = fmt.Sprintf("✗ form error: %v", msg.err)
+		} else {
+			m.statusMsg = "✓ Channel saved"
+		}
 		return m, m.loadChannels
 
 	case tea.KeyMsg:
@@ -295,8 +296,12 @@ func (m *Model) focusField(idx int) {
 
 func (m Model) submitForm() tea.Cmd {
 	name, baseURL, serviceType, apiKey, desc, proxyURL := m.formValues()
+	isEdit := m.isEdit
+	selectedID := m.selectedID
+	chType := m.chType
+	cli := m.client
 	return func() tea.Msg {
-		if m.client == nil {
+		if cli == nil {
 			return formResultMsg{err: fmt.Errorf("not connected")}
 		}
 		ch := client.UpstreamConfig{
@@ -309,12 +314,12 @@ func (m Model) submitForm() tea.Cmd {
 		if apiKey != "" {
 			ch.APIKeys = []string{apiKey}
 		}
-		if !m.isEdit {
-			_, err := m.client.AddChannel(context.Background(), m.chType, ch)
+		if !isEdit {
+			_, err := cli.AddChannel(context.Background(), chType, ch)
 			return formResultMsg{err: err}
 		}
-		ch.ID = m.selectedID
-		_, err := m.client.UpdateChannel(context.Background(), m.chType, m.selectedID, ch)
+		ch.ID = selectedID
+		_, err := cli.UpdateChannel(context.Background(), chType, selectedID, ch)
 		return formResultMsg{err: err}
 	}
 }

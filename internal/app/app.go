@@ -230,7 +230,19 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 
-	return a, nil
+	var cmd tea.Cmd
+	switch a.activeTab {
+	case TabMessages, TabChat, TabCodex, TabGemini:
+		idx := channelTabIndex(a.activeTab)
+		if idx >= 0 {
+			a.channels[idx], cmd = a.channels[idx].Update(msg)
+		}
+	case TabMore:
+		if a.activeSubPanel != more.SubNone {
+			cmd = a.updateSubPanel(msg)
+		}
+	}
+	return a, cmd
 }
 
 func (a *App) updateSubPanel(msg tea.Msg) tea.Cmd {
