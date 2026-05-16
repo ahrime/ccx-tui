@@ -803,3 +803,7 @@ func (m Model) Bindings() []key.Binding { return nil }
 func (m Model) IsFormActive() bool {
 	return (m.view == viewAdd || m.view == viewEdit) && len(m.fields) > 0
 }
+
+func (m Model) IsSubViewActive() bool {
+	return m.view != viewList
+}

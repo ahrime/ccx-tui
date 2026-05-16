@@ -360,7 +360,7 @@ func (a App) isInputFocused() bool {
 	case TabMessages, TabChat, TabCodex, TabGemini:
 		idx := channelTabIndex(a.activeTab)
 		if idx >= 0 {
-			return a.channels[idx].IsFormActive()
+			return a.channels[idx].IsSubViewActive()
 		}
 	}
 	return false
