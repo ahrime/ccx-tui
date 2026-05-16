@@ -41,7 +41,7 @@ func DefaultKeyMap() KeyMap {
 		PrevTab:  key.NewBinding(key.WithKeys("h", "left"), key.WithHelp("h/←", "prev tab")),
 		Up:       key.NewBinding(key.WithKeys("k", "up"), key.WithHelp("k/↑", "up")),
 		Down:     key.NewBinding(key.WithKeys("j", "down"), key.WithHelp("j/↓", "down")),
-		Enter:    key.NewBinding(key.WithKeys("enter"), key.WithHelp("↵", "open")),
+		Enter:    key.NewBinding(key.WithKeys("enter"), key.WithHelp("↵", "select")),
 		Back:     key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
 		Add:      key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "add")),
 		Edit:     key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit")),
@@ -54,12 +54,12 @@ func DefaultKeyMap() KeyMap {
 		MoveDown: key.NewBinding(key.WithKeys("K"), key.WithHelp("K", "move down")),
 		Filter:   key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "filter")),
 		Help:     key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
-		Quit:     key.NewBinding(key.WithKeys("q"), key.WithHelp("q", "quit")),
+		Quit:     key.NewBinding(key.WithKeys("ctrl+c"), key.WithHelp("ctrl+c", "quit")),
 	}
 }
 
 func (k KeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Quit, k.Help, k.Up, k.Down, k.Enter}
+	return []key.Binding{k.Back, k.Help, k.Tab1, k.Tab2, k.Tab3, k.Tab4, k.Tab5, k.Tab6}
 }
 
 func (k KeyMap) FullHelp() [][]key.Binding {
@@ -67,6 +67,6 @@ func (k KeyMap) FullHelp() [][]key.Binding {
 		{k.Tab1, k.Tab2, k.Tab3, k.Tab4, k.Tab5, k.Tab6},
 		{k.Up, k.Down, k.Enter, k.Back},
 		{k.Add, k.Edit, k.Delete, k.Toggle},
-		{k.Ping, k.Test, k.Filter, k.Quit},
+		{k.Ping, k.Test, k.Filter, k.Help},
 	}
 }
