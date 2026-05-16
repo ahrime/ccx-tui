@@ -28,6 +28,11 @@ type Model struct {
 	downloadURL string
 	statusMsg   string
 	progress    float64
+	client      httpClient
+}
+
+type httpClient interface {
+	Get(url string) (*http.Response, error)
 }
 
 type versionCheckMsg struct {
@@ -44,8 +49,13 @@ type downloadDoneMsg struct {
 	err error
 }
 
-func New(binary string, i *i18n.I18n) Model {
-	return Model{binary: binary, i18n: i}
+func New(binary string, i *i18n.I18n, currentVersion string) Model {
+	return Model{
+		binary:  binary,
+		i18n:    i,
+		current: currentVersion,
+		client:  http.DefaultClient,
+	}
 }
 
 func (m Model) Init() tea.Cmd {
@@ -54,7 +64,7 @@ func (m Model) Init() tea.Cmd {
 
 func (m Model) checkVersion() tea.Cmd {
 	return func() tea.Msg {
-		resp, err := http.Get(GITHUB_API)
+		resp, err := m.client.Get(GITHUB_API)
 		if err != nil {
 			return versionCheckMsg{err: err}
 		}
@@ -96,7 +106,7 @@ func (m Model) downloadAndInstall() tea.Cmd {
 			return downloadDoneMsg{err: fmt.Errorf("no download URL for this platform")}
 		}
 
-		resp, err := http.Get(m.downloadURL)
+		resp, err := m.client.Get(m.downloadURL)
 		if err != nil {
 			return downloadDoneMsg{err: err}
 		}

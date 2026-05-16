@@ -84,7 +84,7 @@ func NewApp() App {
 	lp := logs.New(paths.LogFile, ii)
 	sp := settings.New(apiClient, ii)
 	hp := health.New(apiClient, mgr, paths, ii)
-	up := upgrade.New(paths.Binary, ii)
+	up := upgrade.New(paths.Binary, ii, Version)
 	mt := metrics.New(apiClient, ii)
 
 	return App{
@@ -110,7 +110,14 @@ func NewApp() App {
 }
 
 func (a App) Init() tea.Cmd {
-	return a.checkConnection
+	return tea.Batch(
+		a.checkConnection,
+		a.overview.Init(),
+		a.channels[0].Init(),
+		a.channels[1].Init(),
+		a.channels[2].Init(),
+		a.channels[3].Init(),
+	)
 }
 
 type connectionMsg struct {

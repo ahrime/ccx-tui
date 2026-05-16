@@ -3,6 +3,7 @@ package overview
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/BenedictKing/ccx-tui/internal/client"
 	"github.com/BenedictKing/ccx-tui/internal/config"
@@ -40,6 +41,10 @@ type processActionMsg struct {
 	err    error
 }
 
+const HEALTH_INTERVAL = 5 * time.Second
+
+type tickHealthMsg struct{}
+
 func New(c *client.APIClient, p *process.Manager, paths config.Paths, i *i18n.I18n) Model {
 	return Model{client: c, process: p, paths: paths, i18n: i, loading: true}
 }
@@ -76,7 +81,12 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.connected = msg.connected
 		m.version = msg.version
 		m.loading = false
-		return m, nil
+		return m, tea.Tick(HEALTH_INTERVAL, func(t time.Time) tea.Msg {
+			return tickHealthMsg{}
+		})
+
+	case tickHealthMsg:
+		return m, m.checkHealth
 	case processActionMsg:
 		if msg.err != nil {
 			m.statusMsg = fmt.Sprintf("%s failed: %v", msg.action, msg.err)
