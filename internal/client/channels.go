@@ -3,9 +3,11 @@ package client
 import "context"
 
 func (c *APIClient) ListChannels(ctx context.Context, chType ChannelType) ([]UpstreamConfig, error) {
-	var result []UpstreamConfig
-	err := c.Get(ctx, "/api/"+string(chType)+"/channels", &result)
-	return result, err
+	var wrapper struct {
+		Channels []UpstreamConfig `json:"channels"`
+	}
+	err := c.Get(ctx, "/api/"+string(chType)+"/channels", &wrapper)
+	return wrapper.Channels, err
 }
 
 func (c *APIClient) AddChannel(ctx context.Context, chType ChannelType, ch UpstreamConfig) (map[string]interface{}, error) {
