@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -168,7 +169,13 @@ func runCLI(args []string) {
 	case "web":
 		fmt.Printf("Web UI: http://localhost:%s\n", port)
 		if accessKey != "" {
-			fmt.Printf("Access Key: %s\n", accessKey)
+			masked := accessKey
+			if len(accessKey) > 8 {
+				masked = accessKey[:4] + strings.Repeat("*", len(accessKey)-8) + accessKey[len(accessKey)-4:]
+			} else {
+				masked = strings.Repeat("*", len(accessKey))
+			}
+			fmt.Printf("Access Key: %s\n", masked)
 		}
 
 	case "help", "-h", "--help":

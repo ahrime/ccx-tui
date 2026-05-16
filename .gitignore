@@ -11,5 +11,14 @@ dist/
 .DS_Store
 Thumbs.db
 
+# Secrets
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+
 # Build
 /ccx-tui
