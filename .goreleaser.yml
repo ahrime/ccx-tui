@@ -1,0 +1,36 @@
+version: 2
+
+builds:
+  - main: ./cmd/ccx-tui
+    binary: ccx-tui
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+    env:
+      - CGO_ENABLED=0
+
+archives:
+  - format: tar.gz
+    name_template: >-
+      {{ .ProjectName }}-
+      {{- .Os }}-
+      {{- if eq .Arch "amd64" }}amd64
+      {{- else if eq .Arch "arm64" }}arm64
+      {{- else }}{{ .Arch }}{{ end }}
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
