@@ -273,9 +273,13 @@ func (m *Model) focusField(idx int) {
 	if idx >= len(m.fields) {
 		idx = len(m.fields) - 1
 	}
-	m.fields[m.fieldIdx].input.Blur()
+	if !m.fields[m.fieldIdx].isSelect {
+		m.fields[m.fieldIdx].input.Blur()
+	}
 	m.fieldIdx = idx
-	m.fields[m.fieldIdx].input.Focus()
+	if !m.fields[m.fieldIdx].isSelect {
+		m.fields[m.fieldIdx].input.Focus()
+	}
 }
 
 func (m Model) submitForm() tea.Cmd {
