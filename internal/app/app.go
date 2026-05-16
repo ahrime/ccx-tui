@@ -145,6 +145,13 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.quitting {
 			return a, tea.Quit
 		}
+
+		if a.isInputFocused() {
+			var cmd tea.Cmd
+			cmd = a.forwardToActiveTab(msg)
+			return a, cmd
+		}
+
 		switch {
 		case key.Matches(msg, a.keys.Quit) && a.ctxStack.Len() == 1:
 			a.quitting = true
@@ -329,4 +336,35 @@ func (a App) renderContent() string {
 
 func (a App) renderHelp() string {
 	return a.help.View(a.keys)
+}
+
+func (a App) isInputFocused() bool {
+	switch a.activeTab {
+	case TabMessages, TabChat, TabCodex, TabGemini:
+		idx := channelTabIndex(a.activeTab)
+		if idx >= 0 {
+			return a.channels[idx].IsFormActive()
+		}
+	}
+	return false
+}
+
+func (a *App) forwardToActiveTab(msg tea.Msg) tea.Cmd {
+	var cmd tea.Cmd
+	switch a.activeTab {
+	case TabOverview:
+		a.overview, cmd = a.overview.Update(msg)
+	case TabMessages, TabChat, TabCodex, TabGemini:
+		idx := channelTabIndex(a.activeTab)
+		if idx >= 0 {
+			a.channels[idx], cmd = a.channels[idx].Update(msg)
+		}
+	case TabMore:
+		if a.activeSubPanel != more.SubNone {
+			cmd = a.updateSubPanel(msg)
+		} else {
+			a.morePanel, cmd = a.morePanel.Update(msg)
+		}
+	}
+	return cmd
 }

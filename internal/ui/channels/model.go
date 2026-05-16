@@ -644,3 +644,7 @@ func maskKey(key string) string {
 }
 
 func (m Model) Bindings() []key.Binding { return nil }
+
+func (m Model) IsFormActive() bool {
+	return (m.view == viewAdd || m.view == viewEdit) && m.form != nil
+}
