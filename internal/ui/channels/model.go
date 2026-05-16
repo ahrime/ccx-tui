@@ -9,7 +9,6 @@ import (
 	"github.com/BenedictKing/ccx-tui/internal/i18n"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"
-	"github.com/charmbracelet/huh"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -23,6 +22,15 @@ const (
 	viewEdit
 	viewAPIKeys
 )
+
+type formField struct {
+	label    string
+	input    textinput.Model
+	isSelect bool
+	options  []string
+	selIdx   int
+	isHidden bool
+}
 
 type Model struct {
 	width      int
@@ -38,22 +46,14 @@ type Model struct {
 	filter     textinput.Model
 	filtering  bool
 	statusMsg  string
-
-	form       *huh.Form
-	formFields formFields
-
 	keyCursor  int
+
+	fields    []formField
+	fieldIdx  int
+	isEdit    bool
 }
 
-type formFields struct {
-	name         string
-	baseURL      string
-	serviceType  string
-	apiKey       string
-	priority     int
-	description  string
-	proxyURL     string
-}
+var serviceTypes = []string{"openai", "anthropic", "azure", "gemini", "cohere"}
 
 type channelsLoadedMsg struct {
 	channels []client.UpstreamConfig
@@ -95,39 +95,90 @@ func (m Model) loadChannels() tea.Msg {
 	return channelsLoadedMsg{channels: chs, err: err}
 }
 
-func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
-	if (m.view == viewAdd || m.view == viewEdit) && m.form != nil {
-		switch msg.(type) {
-		case formResultMsg, channelsLoadedMsg, channelActionMsg:
-		default:
-			if km, ok := msg.(tea.KeyMsg); ok && km.String() == "esc" {
-				m.view = viewList
-				m.form = nil
-				return m, nil
-			}
-			formModel, cmd := m.form.Update(msg)
-			if fm, ok := formModel.(*huh.Form); ok {
-				m.form = fm
-			}
-			if m.form.State == huh.StateCompleted {
-				return m, m.submitForm()
-			}
-			if m.form.State == huh.StateAborted {
-				m.view = viewList
-				m.form = nil
-				return m, nil
-			}
-			return m, cmd
+func newTextInput(placeholder string, hidden bool) textinput.Model {
+	ti := textinput.New()
+	ti.Placeholder = placeholder
+	ti.CharLimit = 200
+	ti.Width = 40
+	if hidden {
+		ti.EchoMode = textinput.EchoPassword
+		ti.EchoCharacter = '•'
+	}
+	return ti
+}
+
+func (m *Model) initAddFields() {
+	m.isEdit = false
+	m.fieldIdx = 0
+	m.fields = []formField{
+		{label: "Name", input: newTextInput("e.g. my-openai", false)},
+		{label: "Base URL", input: newTextInput("https://api.openai.com/v1", false)},
+		{label: "Service Type", isSelect: true, options: serviceTypes, selIdx: 0},
+		{label: "API Key", input: newTextInput("sk-...", true), isHidden: true},
+		{label: "Description", input: newTextInput("optional description", false)},
+	}
+	m.fields[0].input.Focus()
+}
+
+func (m *Model) initEditFields() {
+	ch := m.selectedChannel()
+	if ch == nil {
+		return
+	}
+	m.isEdit = true
+	m.fieldIdx = 0
+	nameInput := newTextInput("channel name", false)
+	nameInput.SetValue(ch.Name)
+	urlInput := newTextInput("https://...", false)
+	urlInput.SetValue(ch.BaseURL)
+	descInput := newTextInput("optional", false)
+	descInput.SetValue(ch.Description)
+	proxyInput := newTextInput("optional", false)
+	proxyInput.SetValue(ch.ProxyURL)
+	selIdx := 0
+	for i, st := range serviceTypes {
+		if st == ch.ServiceType {
+			selIdx = i
+			break
 		}
 	}
+	m.fields = []formField{
+		{label: "Name", input: nameInput},
+		{label: "Base URL", input: urlInput},
+		{label: "Service Type", isSelect: true, options: serviceTypes, selIdx: selIdx},
+		{label: "Description", input: descInput},
+		{label: "Proxy URL", input: proxyInput},
+	}
+	m.fields[0].input.Focus()
+}
 
+func (m Model) formValues() (name, baseURL, serviceType, apiKey, description, proxyURL string) {
+	for _, f := range m.fields {
+		switch f.label {
+		case "Name":
+			name = f.input.Value()
+		case "Base URL":
+			baseURL = f.input.Value()
+		case "Service Type":
+			if f.isSelect && f.selIdx < len(f.options) {
+				serviceType = f.options[f.selIdx]
+			}
+		case "API Key":
+			apiKey = f.input.Value()
+		case "Description":
+			description = f.input.Value()
+		case "Proxy URL":
+			proxyURL = f.input.Value()
+		}
+	}
+	return
+}
+
+func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		if m.form != nil {
-			m.form = m.form.WithWidth(msg.Width - 4).WithHeight(msg.Height - 4)
-		}
 
 	case channelsLoadedMsg:
 		if msg.err == nil {
@@ -153,16 +204,104 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			m.statusMsg = "saved"
 		}
 		m.view = viewList
-		m.form = nil
 		return m, m.loadChannels
 
 	case tea.KeyMsg:
+		if m.view == viewAdd || m.view == viewEdit {
+			return m.handleFormKey(msg)
+		}
 		if m.filtering {
 			return m.handleFilterInput(msg)
 		}
 		return m.handleKey(msg)
 	}
 	return m, nil
+}
+
+func (m Model) handleFormKey(msg tea.KeyMsg) (Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.view = viewList
+		m.fields = nil
+		return m, nil
+	case "up", "k":
+		if m.fields[m.fieldIdx].isSelect {
+			f := &m.fields[m.fieldIdx]
+			if f.selIdx > 0 {
+				f.selIdx--
+			}
+		} else {
+			m.focusField(m.fieldIdx - 1)
+		}
+		return m, nil
+	case "down", "j":
+		if m.fields[m.fieldIdx].isSelect {
+			f := &m.fields[m.fieldIdx]
+			if f.selIdx < len(f.options)-1 {
+				f.selIdx++
+			}
+		} else {
+			m.focusField(m.fieldIdx + 1)
+		}
+		return m, nil
+	case "tab":
+		m.focusField(m.fieldIdx + 1)
+		return m, nil
+	case "shift+tab":
+		m.focusField(m.fieldIdx - 1)
+		return m, nil
+	case "enter":
+		if m.fieldIdx < len(m.fields)-1 {
+			m.focusField(m.fieldIdx + 1)
+			return m, nil
+		}
+		return m, m.submitForm()
+	}
+
+	if !m.fields[m.fieldIdx].isSelect {
+		var cmd tea.Cmd
+		m.fields[m.fieldIdx].input, cmd = m.fields[m.fieldIdx].input.Update(msg)
+		return m, cmd
+	}
+	return m, nil
+}
+
+func (m *Model) focusField(idx int) {
+	if idx < 0 {
+		idx = 0
+	}
+	if idx >= len(m.fields) {
+		idx = len(m.fields) - 1
+	}
+	m.fields[m.fieldIdx].input.Blur()
+	m.fieldIdx = idx
+	m.fields[m.fieldIdx].input.Focus()
+}
+
+func (m Model) submitForm() tea.Cmd {
+	name, baseURL, serviceType, apiKey, desc, proxyURL := m.formValues()
+	return func() tea.Msg {
+		if m.client == nil {
+			return formResultMsg{err: fmt.Errorf("not connected")}
+		}
+		ch := client.UpstreamConfig{
+			Name:        name,
+			BaseURL:     baseURL,
+			ServiceType: serviceType,
+			Description: desc,
+			ProxyURL:    proxyURL,
+		}
+		if apiKey != "" {
+			ch.APIKeys = []string{apiKey}
+		}
+		if !m.isEdit {
+			_, err := m.client.AddChannel(context.Background(), m.chType, ch)
+			return formResultMsg{err: err}
+		}
+		ch.ID = m.selectedID
+		_, err := m.client.UpdateChannel(context.Background(), m.chType, m.selectedID, ch)
+		return formResultMsg{err: err}
+	}
 }
 
 func (m Model) handleFilterInput(msg tea.KeyMsg) (Model, tea.Cmd) {
@@ -220,7 +359,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 	case "a":
 		m.view = viewAdd
 		m.statusMsg = ""
-		return m, m.initAddForm()
+		m.initAddFields()
 	case "/":
 		m.filtering = true
 		m.filter.Focus()
@@ -235,7 +374,7 @@ func (m Model) handleDetailKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		m.statusMsg = ""
 	case "e":
 		m.view = viewEdit
-		return m, m.initEditForm()
+		m.initEditFields()
 	case "d":
 		if m.selectedID != "" {
 			return m, m.deleteChannel()
@@ -289,140 +428,6 @@ func (m Model) handleAPIKeysKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		}
 	}
 	return m, nil
-}
-
-func (m *Model) initAddForm() tea.Cmd {
-	m.formFields = formFields{
-		serviceType: "openai",
-		priority:    1,
-	}
-	f := huh.NewForm(
-		huh.NewGroup(
-			huh.NewInput().Title("Name").Value(&m.formFields.name),
-			huh.NewInput().Title("Base URL").Value(&m.formFields.baseURL),
-			huh.NewSelect[string]().Title("Service Type").Options(
-				huh.NewOption("openai", "openai"),
-				huh.NewOption("anthropic", "anthropic"),
-				huh.NewOption("azure", "azure"),
-				huh.NewOption("gemini", "gemini"),
-				huh.NewOption("cohere", "cohere"),
-			).Value(&m.formFields.serviceType),
-			huh.NewInput().Title("API Key").Value(&m.formFields.apiKey).EchoMode(huh.EchoModePassword),
-			huh.NewInput().Title("Description").Value(&m.formFields.description),
-		),
-	).WithTheme(huh.ThemeCharm())
-	w := m.width - 4
-	h := m.height - 4
-	if w < 40 {
-		w = 40
-	}
-	if h < 10 {
-		h = 10
-	}
-	m.form = f.WithWidth(w).WithHeight(h)
-	return m.form.Init()
-}
-
-func (m *Model) initEditForm() tea.Cmd {
-	ch := m.selectedChannel()
-	if ch == nil {
-		return nil
-	}
-	m.formFields = formFields{
-		name:        ch.Name,
-		baseURL:     ch.BaseURL,
-		serviceType: ch.ServiceType,
-		priority:    ch.Priority,
-		description: ch.Description,
-		proxyURL:    ch.ProxyURL,
-	}
-	f := huh.NewForm(
-		huh.NewGroup(
-			huh.NewInput().Title("Name").Value(&m.formFields.name),
-			huh.NewInput().Title("Base URL").Value(&m.formFields.baseURL),
-			huh.NewInput().Title("Description").Value(&m.formFields.description),
-			huh.NewInput().Title("Proxy URL").Value(&m.formFields.proxyURL),
-		),
-	).WithTheme(huh.ThemeCharm())
-	w := m.width - 4
-	h := m.height - 4
-	if w < 40 {
-		w = 40
-	}
-	if h < 10 {
-		h = 10
-	}
-	m.form = f.WithWidth(w).WithHeight(h)
-	return m.form.Init()
-}
-
-func (m Model) submitForm() tea.Cmd {
-	return func() tea.Msg {
-		if m.client == nil {
-			return formResultMsg{err: fmt.Errorf("not connected")}
-		}
-		ch := client.UpstreamConfig{
-			Name:        m.formFields.name,
-			BaseURL:     m.formFields.baseURL,
-			ServiceType: m.formFields.serviceType,
-			Description: m.formFields.description,
-			ProxyURL:    m.formFields.proxyURL,
-			Priority:    m.formFields.priority,
-		}
-		if m.formFields.apiKey != "" {
-			ch.APIKeys = []string{m.formFields.apiKey}
-		}
-		if m.view == viewAdd {
-			_, err := m.client.AddChannel(context.Background(), m.chType, ch)
-			return formResultMsg{err: err}
-		}
-		ch.ID = m.selectedID
-		_, err := m.client.UpdateChannel(context.Background(), m.chType, m.selectedID, ch)
-		return formResultMsg{err: err}
-	}
-}
-
-func (m Model) visibleChannels() []client.UpstreamConfig {
-	f := strings.ToLower(m.filter.Value())
-	if f == "" {
-		return m.activeChannels()
-	}
-	var filtered []client.UpstreamConfig
-	for _, ch := range m.activeChannels() {
-		if strings.Contains(strings.ToLower(ch.Name), f) {
-			filtered = append(filtered, ch)
-		}
-	}
-	return filtered
-}
-
-func (m Model) activeChannels() []client.UpstreamConfig {
-	var active []client.UpstreamConfig
-	for _, ch := range m.channels {
-		if ch.Status != "disabled" {
-			active = append(active, ch)
-		}
-	}
-	return active
-}
-
-func (m Model) disabledChannels() []client.UpstreamConfig {
-	var disabled []client.UpstreamConfig
-	for _, ch := range m.channels {
-		if ch.Status == "disabled" {
-			disabled = append(disabled, ch)
-		}
-	}
-	return disabled
-}
-
-func (m Model) selectedChannel() *client.UpstreamConfig {
-	for i := range m.channels {
-		if m.channels[i].ID == m.selectedID {
-			return &m.channels[i]
-		}
-	}
-	return nil
 }
 
 func (m Model) deleteChannel() tea.Cmd {
@@ -488,17 +493,57 @@ func (m Model) moveKeyBottom(key string) tea.Cmd {
 	}
 }
 
+func (m Model) visibleChannels() []client.UpstreamConfig {
+	f := strings.ToLower(m.filter.Value())
+	if f == "" {
+		return m.activeChannels()
+	}
+	var filtered []client.UpstreamConfig
+	for _, ch := range m.activeChannels() {
+		if strings.Contains(strings.ToLower(ch.Name), f) {
+			filtered = append(filtered, ch)
+		}
+	}
+	return filtered
+}
+
+func (m Model) activeChannels() []client.UpstreamConfig {
+	var active []client.UpstreamConfig
+	for _, ch := range m.channels {
+		if ch.Status != "disabled" {
+			active = append(active, ch)
+		}
+	}
+	return active
+}
+
+func (m Model) disabledChannels() []client.UpstreamConfig {
+	var disabled []client.UpstreamConfig
+	for _, ch := range m.channels {
+		if ch.Status == "disabled" {
+			disabled = append(disabled, ch)
+		}
+	}
+	return disabled
+}
+
+func (m Model) selectedChannel() *client.UpstreamConfig {
+	for i := range m.channels {
+		if m.channels[i].ID == m.selectedID {
+			return &m.channels[i]
+		}
+	}
+	return nil
+}
+
 func (m Model) View() string {
 	if m.loading {
 		return "  Loading channels..."
 	}
-
 	switch m.view {
 	case viewDetail:
 		return m.viewDetail()
-	case viewAdd:
-		return m.viewForm()
-	case viewEdit:
+	case viewAdd, viewEdit:
 		return m.viewForm()
 	case viewAPIKeys:
 		return m.viewAPIKeys()
@@ -605,13 +650,78 @@ func (m Model) viewDetail() string {
 }
 
 func (m Model) viewForm() string {
-	if m.form != nil {
-		s := m.form.View()
-		helpStyle := lipgloss.NewStyle().Faint(true)
-		s += "\n" + helpStyle.Render("  Tab:Next  Shift+Tab:Prev  ↑↓:Select  Esc:Cancel")
-		return s
+	if len(m.fields) == 0 {
+		return "  Form error. Press esc."
 	}
-	return "  Form error. Press esc."
+
+	title := "Add Channel"
+	if m.isEdit {
+		title = "Edit Channel"
+	}
+	title = fmt.Sprintf("%s %s", title, strings.Title(string(m.chType)))
+
+	borderStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("62")).
+		Padding(1, 2)
+
+	labelW := 14
+	inputW := 40
+
+	var rows []string
+	for i, f := range m.fields {
+		isActive := i == m.fieldIdx
+
+		labelStyle := lipgloss.NewStyle().Width(labelW).Bold(isActive)
+		if isActive {
+			labelStyle = labelStyle.Foreground(lipgloss.Color("86"))
+		} else {
+			labelStyle = labelStyle.Faint(true)
+		}
+
+		var value string
+		if f.isSelect {
+			value = f.options[f.selIdx]
+		} else {
+			value = f.input.View()
+		}
+
+		prefix := "  "
+		suffix := ""
+		if isActive {
+			prefix = "▸ "
+			suffix = " ◂"
+		}
+
+		if f.isSelect && isActive {
+			row := fmt.Sprintf("%s%s %s", prefix, labelStyle.Render(f.label), value)
+			rows = append(rows, row)
+			selectStyle := lipgloss.NewStyle().PaddingLeft(labelW + 4)
+			for oi, opt := range f.options {
+				marker := "○"
+				if oi == f.selIdx {
+					marker = "●"
+				}
+				rows = append(rows, selectStyle.Render(fmt.Sprintf("  %s %s", marker, opt)))
+			}
+		} else {
+			inputStyle := lipgloss.NewStyle().Width(inputW)
+			row := fmt.Sprintf("%s%s %s%s", prefix, labelStyle.Render(f.label), inputStyle.Render(value), suffix)
+			rows = append(rows, row)
+		}
+	}
+
+	content := strings.Join(rows, "\n")
+
+	helpStyle := lipgloss.NewStyle().Faint(true)
+	help := helpStyle.Render("  ↑↓/Tab: Navigate  Enter: Confirm  Esc: Cancel")
+
+	box := borderStyle.Render(lipgloss.NewStyle().Bold(true).Render("  "+title) + "\n\n" + content)
+
+	if m.statusMsg != "" {
+		return box + "\n  " + m.statusMsg + "\n" + help
+	}
+	return box + "\n" + help
 }
 
 func (m Model) viewAPIKeys() string {
@@ -666,5 +776,5 @@ func maskKey(key string) string {
 func (m Model) Bindings() []key.Binding { return nil }
 
 func (m Model) IsFormActive() bool {
-	return (m.view == viewAdd || m.view == viewEdit) && m.form != nil
+	return (m.view == viewAdd || m.view == viewEdit) && len(m.fields) > 0
 }
