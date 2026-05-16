@@ -100,6 +100,11 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		switch msg.(type) {
 		case formResultMsg, channelsLoadedMsg, channelActionMsg:
 		default:
+			if km, ok := msg.(tea.KeyMsg); ok && km.String() == "esc" {
+				m.view = viewList
+				m.form = nil
+				return m, nil
+			}
 			formModel, cmd := m.form.Update(msg)
 			if fm, ok := formModel.(*huh.Form); ok {
 				m.form = fm
@@ -601,7 +606,10 @@ func (m Model) viewDetail() string {
 
 func (m Model) viewForm() string {
 	if m.form != nil {
-		return m.form.View()
+		s := m.form.View()
+		helpStyle := lipgloss.NewStyle().Faint(true)
+		s += "\n" + helpStyle.Render("  Tab:Next  Shift+Tab:Prev  ↑↓:Select  Esc:Cancel")
+		return s
 	}
 	return "  Form error. Press esc."
 }
