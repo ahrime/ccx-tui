@@ -96,6 +96,28 @@ func (m Model) loadChannels() tea.Msg {
 }
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
+	if m.view == viewAdd || m.view == viewEdit {
+		if m.form != nil {
+			switch msg.(type) {
+			case formResultMsg:
+			default:
+				formModel, cmd := m.form.Update(msg)
+				if fm, ok := formModel.(*huh.Form); ok {
+					m.form = fm
+				}
+				if m.form.State == huh.StateCompleted {
+					return m, m.submitForm()
+				}
+				if m.form.State == huh.StateAborted {
+					m.view = viewList
+					m.form = nil
+					return m, nil
+				}
+				return m, cmd
+			}
+		}
+	}
+
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -125,21 +147,13 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			m.statusMsg = "saved"
 		}
 		m.view = viewList
+		m.form = nil
 		return m, m.loadChannels
 
+	case formInitMsg:
+		return m, m.form.Init()
+
 	case tea.KeyMsg:
-		if m.view == viewAdd || m.view == viewEdit {
-			if m.form != nil {
-				formModel, cmd := m.form.Update(msg)
-				if fm, ok := formModel.(*huh.Form); ok {
-					m.form = fm
-				}
-				if m.form.State == huh.StateCompleted {
-					return m, m.submitForm()
-				}
-				return m, cmd
-			}
-		}
 		if m.filtering {
 			return m.handleFilterInput(msg)
 		}
@@ -147,6 +161,8 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	}
 	return m, nil
 }
+
+type formInitMsg struct{}
 
 func (m Model) handleFilterInput(msg tea.KeyMsg) (Model, tea.Cmd) {
 	switch msg.String() {
@@ -204,6 +220,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		m.view = viewAdd
 		m.statusMsg = ""
 		m.initAddForm()
+		return m, func() tea.Msg { return formInitMsg{} }
 	case "/":
 		m.filtering = true
 		m.filter.Focus()
@@ -219,6 +236,7 @@ func (m Model) handleDetailKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 	case "e":
 		m.view = viewEdit
 		m.initEditForm()
+		return m, func() tea.Msg { return formInitMsg{} }
 	case "d":
 		if m.selectedID != "" {
 			return m, m.deleteChannel()
