@@ -12,4 +12,4 @@ dist/
 Thumbs.db
 
 # Build
-ccx-tui
+/ccx-tui
