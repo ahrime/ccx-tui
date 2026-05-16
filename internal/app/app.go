@@ -231,17 +231,15 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	var cmd tea.Cmd
-	switch a.activeTab {
-	case TabMessages, TabChat, TabCodex, TabGemini:
-		idx := channelTabIndex(a.activeTab)
-		if idx >= 0 {
-			a.channels[idx], cmd = a.channels[idx].Update(msg)
-		}
-	case TabMore:
-		if a.activeSubPanel != more.SubNone {
-			cmd = a.updateSubPanel(msg)
-		}
+	a.overview, _ = a.overview.Update(msg)
+	for i := range a.channels {
+		a.channels[i], _ = a.channels[i].Update(msg)
 	}
+	a.logsPanel, _ = a.logsPanel.Update(msg)
+	a.settings, _ = a.settings.Update(msg)
+	a.health, _ = a.health.Update(msg)
+	a.upgradePanel, _ = a.upgradePanel.Update(msg)
+	a.metricsPanel, _ = a.metricsPanel.Update(msg)
 	return a, cmd
 }
 
